@@ -8,71 +8,97 @@ export default function Login() {
   const [senha, setSenha] = useState("");
   const [manter, setManter] = useState(false);
   const [erro, setErro] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = login(user, senha, manter);
+    setLoading(true);
+    setErro("");
+    const result = await login(user, senha, manter);
     if (result) setErro(result);
+    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-navy to-[hsl(215,25%,15%)] px-4">
-      <div className="w-full max-w-[400px] bg-card rounded-2xl shadow-xl p-8">
-        <div className="text-center mb-6">
-          <h1 className="text-[28px] font-bold text-foreground" style={{ fontFamily: "Georgia, serif" }}>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Decorative background elements */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-100/50 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-100/50 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="w-full max-w-[420px] bg-white/70 backdrop-blur-xl rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-8 sm:p-10 relative z-10 animate-in fade-in zoom-in-95 duration-500">
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">
             KALLA DECOR
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Central de Gestão</p>
-          <div className="mx-auto mt-3 w-10 h-[2px] bg-info rounded" />
+          <p className="text-sm text-slate-500 font-medium">Central de Gestão Financeira</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Digite seu usuário"
-              value={user}
-              onChange={(e) => { setUser(e.target.value); setErro(""); }}
-              className="w-full h-10 pl-10 pr-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              autoFocus
-            />
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-4">
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <User className="h-4 w-4 text-slate-400 group-focus-within:text-navy transition-colors" />
+              </div>
+              <input
+                type="text"
+                placeholder="ID de Usuário"
+                value={user}
+                onChange={(e) => { setUser(e.target.value); setErro(""); }}
+                className="w-full h-11 pl-11 pr-4 rounded-xl border border-slate-200 bg-white/50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy transition-all placeholder:text-slate-400"
+                autoFocus
+              />
+            </div>
+
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <Lock className="h-4 w-4 text-slate-400 group-focus-within:text-navy transition-colors" />
+              </div>
+              <input
+                type="password"
+                placeholder="Senha"
+                value={senha}
+                onChange={(e) => { setSenha(e.target.value); setErro(""); }}
+                className="w-full h-11 pl-11 pr-4 rounded-xl border border-slate-200 bg-white/50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy transition-all placeholder:text-slate-400"
+              />
+            </div>
           </div>
 
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="password"
-              placeholder="Digite sua senha"
-              value={senha}
-              onChange={(e) => { setSenha(e.target.value); setErro(""); }}
-              className="w-full h-10 pl-10 pr-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+          <div className="flex items-center justify-between pt-1">
+            <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer hover:text-slate-700 transition-colors">
+              <div className="relative flex items-center">
+                <input
+                  type="checkbox"
+                  checked={manter}
+                  onChange={(e) => setManter(e.target.checked)}
+                  className="peer h-4 w-4 shrink-0 rounded-[4px] border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-navy/20 disabled:cursor-not-allowed disabled:opacity-50 appearance-none transition-colors checked:bg-navy checked:border-navy"
+                />
+                <svg className="absolute w-3 h-3 text-white fill-current left-0.5 pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity" viewBox="0 0 20 20">
+                  <path d="M0 11l2-2 5 5L18 3l2 2L7 18z" />
+                </svg>
+              </div>
+              Lembrar de mim
+            </label>
+            <a href="#" className="text-sm font-medium text-navy hover:text-cyan transition-colors">Esqueceu a senha?</a>
           </div>
-
-          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={manter}
-              onChange={(e) => setManter(e.target.checked)}
-              className="rounded border-input"
-            />
-            Manter conectado
-          </label>
 
           <button
             type="submit"
-            className="w-full h-10 rounded-lg bg-info text-primary-foreground font-bold text-sm hover:shadow-lg transition-shadow"
+            disabled={loading}
+            className="w-full h-11 rounded-xl bg-navy text-white font-medium text-sm hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-navy/30 transition-all active:scale-[0.98] shadow-sm mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Entrar
+            {loading ? "Autenticando..." : "Acessar Plataforma"}
           </button>
 
           {erro && (
-            <p className="text-destructive text-sm text-center font-medium">{erro}</p>
+            <div className="p-3 mt-4 rounded-lg bg-red-50 text-red-600 text-sm text-center font-medium border border-red-100 animate-in fade-in slide-in-from-top-2">
+              {erro}
+            </div>
           )}
         </form>
 
-        <p className="text-center text-[11px] text-accent mt-6">NoPonto Consultoria</p>
+        <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+          <p className="text-[12px] text-slate-400 font-medium">NoPonto Consultoria &copy; 2026</p>
+        </div>
       </div>
     </div>
   );

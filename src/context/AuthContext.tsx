@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { supabase } from "@/lib/supabase";
+import type { Session, User } from "@supabase/supabase-js";
 
 export interface SessionData {
   user: string;
@@ -6,73 +8,102 @@ export interface SessionData {
   perfil: string;
   loggedAt: string;
   manter: boolean;
+  supabaseUserId: string;
 }
 
 interface AuthContextType {
   session: SessionData | null;
-  login: (user: string, senha: string, manter: boolean) => string | null;
+  loading: boolean;
+  login: (email: string, senha: string, manter: boolean) => Promise<string | null>;
   logout: () => void;
-}
-
-const USERS = [
-  { user: "gustavo", senha: "kalla2026", nome: "Gustavo", perfil: "admin" },
-  { user: "gisele", senha: "financeiro2026", nome: "Gisele", perfil: "financeiro" },
-  { user: "noponto", senha: "consultoria2026", nome: "NoPonto", perfil: "consultor" },
-];
-
-const LS_KEY = "kalla_session";
-
-function loadSession(): SessionData | null {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const data: SessionData = JSON.parse(raw);
-    if (!data.manter) {
-      // session-only: check if sessionStorage flag exists
-      if (!sessionStorage.getItem("kalla_active")) return null;
-    }
-    return data;
-  } catch {
-    return null;
-  }
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+async function fetchProfile(userId: string): Promise<{ nome: string; perfil: string } | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("nome, perfil")
+    .eq("id", userId)
+    .single();
+  if (error || !data) return null;
+  return data;
+}
+
+function buildSessionData(user: User, profile: { nome: string; perfil: string }, manter: boolean): SessionData {
+  return {
+    user: user.email?.split("@")[0] || "",
+    nome: profile.nome,
+    perfil: profile.perfil,
+    loggedAt: new Date().toISOString(),
+    manter,
+    supabaseUserId: user.id,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionData | null>(() => loadSession());
+  const [session, setSession] = useState<SessionData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (session) {
-      localStorage.setItem(LS_KEY, JSON.stringify(session));
-      sessionStorage.setItem("kalla_active", "1");
-    }
-  }, [session]);
+    // Recuperar sessão existente
+    supabase.auth.getSession().then(async ({ data: { session: sbSession } }) => {
+      if (sbSession?.user) {
+        const profile = await fetchProfile(sbSession.user.id);
+        if (profile) {
+          setSession(buildSessionData(sbSession.user, profile, true));
+        }
+      }
+      setLoading(false);
+    });
 
-  const login = (user: string, senha: string, manter: boolean): string | null => {
-    const found = USERS.find(
-      (u) => u.user.toLowerCase() === user.toLowerCase() && u.senha === senha
-    );
-    if (!found) return "Usuário ou senha incorretos";
-    const s: SessionData = {
-      user: found.user,
-      nome: found.nome,
-      perfil: found.perfil,
-      loggedAt: new Date().toISOString(),
-      manter,
-    };
-    setSession(s);
-    return null;
+    // Escutar mudanças de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, sbSession) => {
+      if (event === "SIGNED_IN" && sbSession?.user) {
+        const profile = await fetchProfile(sbSession.user.id);
+        if (profile) {
+          setSession(buildSessionData(sbSession.user, profile, true));
+        }
+      } else if (event === "SIGNED_OUT") {
+        setSession(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const login = async (email: string, senha: string, _manter: boolean): Promise<string | null> => {
+    // Suporte para login por nome de usuário (retrocompatibilidade)
+    const emailNormalized = email.includes("@") ? email : `${email.toLowerCase()}@kalladecor.com`;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: emailNormalized,
+      password: senha,
+    });
+
+    if (error) {
+      return "Usuário ou senha incorretos";
+    }
+
+    if (data.user) {
+      const profile = await fetchProfile(data.user.id);
+      if (profile) {
+        setSession(buildSessionData(data.user, profile, _manter));
+        return null;
+      }
+      return "Perfil do usuário não encontrado";
+    }
+
+    return "Erro inesperado ao fazer login";
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setSession(null);
-    localStorage.removeItem(LS_KEY);
-    sessionStorage.removeItem("kalla_active");
   };
 
   return (
-    <AuthContext.Provider value={{ session, login, logout }}>
+    <AuthContext.Provider value={{ session, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

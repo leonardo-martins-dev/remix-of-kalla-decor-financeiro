@@ -12,28 +12,81 @@ import Equilibrio from "@/components/tabs/Equilibrio";
 import Caixa from "@/components/tabs/Caixa";
 import AnaliseVendas from "@/components/tabs/AnaliseVendas";
 import Atualizar from "@/components/tabs/Atualizar";
-import { Menu } from "lucide-react";
+import Usuarios from "@/components/tabs/Usuarios";
+import { 
+  Menu, LayoutDashboard, Package, CircleDollarSign, Target, 
+  ClipboardList, Ship, Scale, Wallet, TrendingUp, Settings, LogOut, Shield
+} from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const tabs = [
-  { id: "visao", label: "📊 Visão Geral", component: VisaoGeral },
-  { id: "produtos", label: "📦 Produtos", component: Produtos },
-  { id: "custos", label: "💰 Custos", component: Custos },
-  { id: "simulador", label: "🎯 Simulador", component: Simulador },
-  { id: "orcamento", label: "📋 Orçamento", component: Orcamento },
-  { id: "containers", label: "🚢 Containers", component: ContainersTab },
-  { id: "equilibrio", label: "⚖️ Equilíbrio", component: Equilibrio },
-  { id: "caixa", label: "🏦 Caixa", component: Caixa },
-  { id: "vendas", label: "📈 Vendas", component: AnaliseVendas },
-  { id: "atualizar", label: "⚙️ Atualizar", component: Atualizar },
+  { id: "visao", label: "Visão Geral", icon: LayoutDashboard, component: VisaoGeral },
+  { id: "produtos", label: "Produtos", icon: Package, component: Produtos },
+  { id: "custos", label: "Custos", icon: CircleDollarSign, component: Custos },
+  { id: "simulador", label: "Simulador", icon: Target, component: Simulador },
+  { id: "orcamento", label: "Orçamento", icon: ClipboardList, component: Orcamento },
+  { id: "containers", label: "Containers", icon: Ship, component: ContainersTab },
+  { id: "equilibrio", label: "Equilíbrio", icon: Scale, component: Equilibrio },
+  { id: "caixa", label: "Caixa", icon: Wallet, component: Caixa },
+  { id: "vendas", label: "Vendas", icon: TrendingUp, component: AnaliseVendas },
+  { id: "atualizar", label: "Atualizar", icon: Settings, component: Atualizar },
+  { id: "usuarios", label: "Usuários", icon: Shield, component: Usuarios },
 ];
+
+function DashboardSidebar({ activeTab, onTabChange, isMobile = false }: { activeTab: string, onTabChange: (id: string) => void, isMobile?: boolean }) {
+  const { session, logout } = useAuth();
+  
+  return (
+    <div className={`flex flex-col h-full bg-white border-r border-slate-200 ${isMobile ? 'w-full' : 'w-64'}`}>
+      <div className="p-6">
+        <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-tight">
+          KALLA DECOR
+        </h1>
+        <p className="text-xs text-slate-500 font-medium tracking-wide uppercase mt-1">Gestão Financeira</p>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                isActive 
+                  ? "bg-slate-100 text-navy shadow-sm" 
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive ? 'text-navy' : 'text-slate-400'}`} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="p-4 mt-auto border-t border-slate-100">
+        <div className="bg-slate-50 rounded-xl p-3 flex flex-col gap-2">
+          <p className="text-sm font-medium text-slate-900 truncate">Olá, {session?.nome}</p>
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors w-full"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Sair da plataforma
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState("visao");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const ActiveComponent = tabs.find((t) => t.id === activeTab)?.component || VisaoGeral;
   const { receitaTotal } = useKalla();
-  const { session, logout } = useAuth();
   const activeLabel = tabs.find((t) => t.id === activeTab)?.label || "";
 
   const handleTabChange = (id: string) => {
@@ -42,101 +95,56 @@ function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <header className="bg-gradient-to-r from-navy to-slate-800 text-primary-foreground px-4 sm:px-6 py-3 sm:py-4">
-        <div className="max-w-[1300px] mx-auto flex items-center justify-between">
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold tracking-wide truncate">KALLA DECOR — Central de Gestão</h1>
-            <p className="text-cyan text-xs sm:text-sm font-medium">NoPonto Consultoria</p>
-          </div>
-          <div className="flex items-center gap-4 shrink-0 ml-2">
-            <div className="text-right">
-              <p className="text-xs opacity-70">Faturamento Total</p>
-              <p className="text-lg sm:text-2xl font-bold">{formatBRL(receitaTotal)}</p>
-            </div>
-            <div className="hidden sm:flex items-center gap-2 border-l border-primary-foreground/20 pl-4">
-              <span className="text-[13px] text-primary-foreground">Olá, {session?.nome}</span>
-              <button
-                onClick={logout}
-                className="text-[13px] text-muted-foreground hover:text-primary-foreground transition-colors"
-              >
-                Sair
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="h-screen flex overflow-hidden bg-slate-50/50">
+      {/* Sidebar Desktop */}
+      <aside className="hidden md:block z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        <DashboardSidebar activeTab={activeTab} onTabChange={handleTabChange} />
+      </aside>
 
-      {/* Desktop nav */}
-      <nav aria-label="Navegação principal" className="hidden md:block bg-navy/95 border-b border-primary-foreground/10 overflow-x-auto">
-        <div className="max-w-[1300px] mx-auto flex" role="tablist">
-          {tabs.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              aria-controls={`panel-${tab.id}`}
-              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                activeTab === tab.id
-                  ? "bg-primary-foreground text-navy rounded-t-md"
-                  : "text-gray-300 hover:text-primary-foreground"
-              }`}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      {/* Mobile nav */}
-      <div className="md:hidden bg-navy/95 border-b border-primary-foreground/10">
-        <div className="flex items-center justify-between px-4 py-2">
-          <span className="text-primary-foreground text-sm font-medium">{activeLabel}</span>
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <button aria-label="Abrir menu de navegação" className="text-primary-foreground p-1.5 rounded hover:bg-primary-foreground/10">
-                <Menu className="h-5 w-5" />
-              </button>
-            </SheetTrigger>
-            <SheetContent side="left" className="bg-navy border-primary-foreground/10 w-64 p-0">
-              <div className="p-4 border-b border-primary-foreground/10">
-                <p className="text-primary-foreground font-bold text-sm">Navegação</p>
-              </div>
-              <nav aria-label="Menu de navegação mobile" className="flex flex-col py-2">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => handleTabChange(tab.id)}
-                    className={`px-4 py-3 text-left text-sm font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? "bg-primary-foreground/10 text-primary-foreground border-l-2 border-cyan"
-                        : "text-gray-300 hover:text-primary-foreground hover:bg-primary-foreground/5"
-                    }`}>
-                    {tab.label}
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        
+        {/* Header Mobile & Global Faturamento */}
+        <header className="bg-white/70 backdrop-blur-md border-b border-slate-200 sticky top-0 z-10">
+          <div className="flex items-center justify-between px-4 sm:px-8 py-4">
+            <div className="flex items-center gap-3">
+              {/* Menu Mobile Trigger */}
+              <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+                <SheetTrigger asChild>
+                  <button className="md:hidden p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                    <Menu className="w-5 h-5" />
                   </button>
-                ))}
-              </nav>
-              <div className="mt-auto border-t border-primary-foreground/10 p-4">
-                <p className="text-primary-foreground text-[13px] mb-2">Olá, {session?.nome}</p>
-                <button
-                  onClick={logout}
-                  className="text-muted-foreground text-[13px] hover:text-primary-foreground transition-colors"
-                >
-                  Sair
-                </button>
+                </SheetTrigger>
+                <SheetContent side="left" className="p-0 w-72 border-none">
+                  <DashboardSidebar activeTab={activeTab} onTabChange={handleTabChange} isMobile />
+                </SheetContent>
+              </Sheet>
+
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900 hidden sm:block">{activeLabel}</h2>
+                <h2 className="text-base font-semibold text-slate-900 sm:hidden">Kalla Decor</h2>
               </div>
-            </SheetContent>
-          </Sheet>
-        </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Faturamento Total</p>
+                <p className="text-lg sm:text-xl font-bold text-navy">{formatBRL(receitaTotal)}</p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Scrollable Main Area */}
+        <main className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
+          <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+            {/* Title for mobile since it's hidden in header to save space */}
+            <h1 className="text-2xl font-bold text-slate-900 sm:hidden mb-6">{activeLabel}</h1>
+            
+            <ActiveComponent onNavigate={setActiveTab} />
+          </div>
+        </main>
       </div>
-
-      <main className="flex-1 py-4 sm:py-6 px-2 sm:px-4" role="tabpanel" id={`panel-${activeTab}`}>
-        <div className="max-w-[1300px] mx-auto">
-          <ActiveComponent onNavigate={setActiveTab} />
-        </div>
-      </main>
-
-      <footer className="bg-navy text-primary-foreground/60 text-center text-xs sm:text-sm py-3 sm:py-4">
-        NoPonto Consultoria — Kalla Decor — Mar/2026
-      </footer>
     </div>
   );
 }

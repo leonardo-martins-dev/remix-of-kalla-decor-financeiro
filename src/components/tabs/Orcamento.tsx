@@ -55,6 +55,8 @@ interface CotacaoSalva {
   vendedor: string;
 }
 
+import { supabase } from "@/lib/supabase";
+
 const FORMAS_PGTO = [
   "À Vista (PIX)",
   "Cartão 1x",
@@ -66,26 +68,6 @@ const FORMAS_PGTO = [
 
 // All SKUs flattened for the select
 const ALL_SKUS = SKU_MAP.map((s, i) => ({ idx: i, label: `${s.produto} (${s.skuKalla})`, pv: 0, custo: s.custoPosto, linha: s.linha }));
-
-function getNextSeq(): number {
-  const raw = localStorage.getItem("kalla_cotacao_seq");
-  return raw ? Number(raw) + 1 : 1;
-}
-
-function saveSeq(n: number) {
-  localStorage.setItem("kalla_cotacao_seq", String(n));
-}
-
-function loadCotacoes(): CotacaoSalva[] {
-  try {
-    const raw = localStorage.getItem("kalla_cotacoes");
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveCotacoes(c: CotacaoSalva[]) {
-  localStorage.setItem("kalla_cotacoes", JSON.stringify(c));
-}
 
 // Get PV for a SKU based on its product line
 function getPvForSku(skuIdx: number, produtos: { name: string; pv: number }[]): number {
@@ -111,10 +93,29 @@ export default function Orcamento() {
   const [custoFreteKalla, setCustoFreteKalla] = useState(150);
   const [embalagem, setEmbalagem] = useState(30);
   const [formaPgto, setFormaPgto] = useState(FORMAS_PGTO[0]);
-  const [cotacoes, setCotacoes] = useState<CotacaoSalva[]>(() => loadCotacoes());
+  const [cotacoes, setCotacoes] = useState<CotacaoSalva[]>([]);
+  const [seqCotacao, setSeqCotacao] = useState(1);
   const [nextId, setNextId] = useState(2);
 
-  useEffect(() => { saveCotacoes(cotacoes); }, [cotacoes]);
+  useEffect(() => {
+    async function loadDb() {
+      const { data, error } = await supabase
+        .from("cotacoes")
+        .select("*")
+        .order("id", { ascending: false })
+        .limit(50);
+      if (!error && data) {
+        setCotacoes(data.map((r: any) => ({
+          numero: r.numero, data: r.data, cliente: r.cliente, valor: Number(r.valor), itens: r.itens, vendedor: r.vendedor,
+        })));
+        if (data.length > 0) {
+          const maxNum = Math.max(...data.map((r: any) => parseInt(r.numero.split("-")[1] || "0", 10)));
+          setSeqCotacao(maxNum + 1);
+        }
+      }
+    }
+    loadDb();
+  }, []);
 
   const addItem = () => {
     setItens(prev => [...prev, { id: nextId, skuIdx: 0, qtd: 1, pvUnit: getPvForSku(0, produtos), descPct: 0 }]);
@@ -177,10 +178,10 @@ export default function Orcamento() {
 
   // PDF generation
   const gerarPDF = () => {
-    const seq = getNextSeq();
+    const seq = seqCotacao;
+    setSeqCotacao(s => s + 1);
     const numero = `KD-${String(seq).padStart(4, "0")}`;
-    saveSeq(seq);
-
+    
     const doc = new jsPDF();
     const w = doc.internal.pageSize.getWidth();
 
@@ -309,6 +310,17 @@ export default function Orcamento() {
       vendedor: session?.nome ?? "Sistema",
     };
     setCotacoes(prev => [nova, ...prev].slice(0, 50));
+    
+    // Save to Supabase
+    supabase.from("cotacoes").insert({
+      numero: nova.numero,
+      data: nova.data,
+      cliente: nova.cliente,
+      valor: nova.valor,
+      itens: nova.itens,
+      vendedor: nova.vendedor,
+      created_by: session?.supabaseUserId
+    }).then();
   };
 
   const duplicarCotacao = (c: CotacaoSalva) => {
