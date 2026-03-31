@@ -108,7 +108,7 @@ function parseExcel(buffer: ArrayBuffer): ImportData | string {
 
     prodRows.push({
       numero: String(r[0] || ""),
-      data: dateVal ? String(dateVal) : "",
+      data: dateVal instanceof Date ? dateVal.toISOString() : (dateVal ? String(dateVal) : ""),
       cliente: String(r[6] || ""),
       representante: String(r[7] || ""),
       codigoProduto,
@@ -295,6 +295,12 @@ export default function ImportarMaio() {
       resumoVendedores: data.resumoVendedores,
       formasPagamento: data.formasPagamento,
       topClientes: data.topClientes.map((c) => ({ ...c, pedidos: 1 })),
+      produtosRaw: data.produtos.map(p => ({
+        numero: p.numero, data: p.data, cliente: p.cliente, representante: p.representante,
+        codigoProduto: p.codigoProduto, descricao: p.descricao, quantidade: p.quantidade,
+        precoUnit: p.precoUnit, precoTotal: p.precoTotal, mesAno: p.mesAno
+      })),
+      pedidosRaw: data.pedidos
     });
 
     setImporting(false);

@@ -1,10 +1,14 @@
-import { useKalla } from "@/context/KallaContext";
+import { useState, useMemo } from "react";
+import { useKalla, type VendasData, type ProdutoVendaRow, type PedidoVendaRow } from "@/context/KallaContext";
 import { formatBRL, formatBRL2, calcMC, calcMCPercent, avgCusto } from "@/data/kallaData";
+import { findSku, SKU_MAP } from "@/data/skuMapping";
+import { getCycleRange, getAvailableCycles } from "@/lib/dateUtils";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, CartesianGrid,
 } from "recharts";
 import InfoTooltip from "@/components/InfoTooltip";
+import { CalendarDays, Filter, ChevronDown, RefreshCcw } from "lucide-react";
 
 const safe = (v: number) => (Number.isFinite(v) ? v : 0);
 
@@ -16,6 +20,10 @@ interface AnaliseVendasProps {
 
 export default function AnaliseVendas({ onNavigate }: AnaliseVendasProps) {
   const { vendas, produtos, premissas } = useKalla();
+  
+  // Cutoff settings
+  const [cutoffDay, setCutoffDay] = useState(1);
+  const [selectedCycleIndex, setSelectedCycleIndex] = useState(-1);
 
   if (!vendas) {
     return (
@@ -37,10 +45,132 @@ export default function AnaliseVendas({ onNavigate }: AnaliseVendasProps) {
     );
   }
 
-  const v = vendas;
+  // Recalculate everything from raw rows if they exist
+  const dashboardData = useMemo(() => {
+    // Se não tiver dados brutos, volta ao resumo original (retrocompatibilidade)
+    if (!vendas.produtosRaw || !vendas.pedidosRaw) {
+      return {
+        ...vendas,
+        periodoLabel: `${vendas.periodoMin} a ${vendas.periodoMax}`,
+        filtered: false
+      };
+    }
+
+    const prodRaw = vendas.produtosRaw;
+    const pedRaw = vendas.pedidosRaw;
+    
+    // Find absolute range
+    const allDates = prodRaw.map(p => new Date(p.data)).filter(d => !isNaN(d.getTime()));
+    const cycles = getAvailableCycles(allDates, cutoffDay);
+    
+    let filteredProds = prodRaw;
+    let filteredPeds = pedRaw;
+    let periodoLabel = `${vendas.periodoMin} a ${vendas.periodoMax}`;
+
+    if (selectedCycleIndex >= 0 && cycles[selectedCycleIndex]) {
+      const cycle = cycles[selectedCycleIndex];
+      const { startDate, endDate } = getCycleRange(cycle.year, cycle.month, cutoffDay);
+      
+      periodoLabel = cycle.label;
+      const startMs = startDate.getTime();
+      const endMs = endDate.getTime();
+
+      filteredProds = prodRaw.filter(p => {
+        const d = new Date(p.data).getTime();
+        return d >= startMs && d <= endMs;
+      });
+
+      const orderNumbers = new Set(filteredProds.map(p => p.numero));
+      filteredPeds = pedRaw.filter(p => orderNumbers.has(p.numero));
+    }
+
+    // Summarize filtered data
+    const totalPedidos = filteredPeds.length;
+    const totalItens = filteredProds.reduce((s, p) => s + p.quantidade, 0);
+    const receitaBruta = filteredProds.reduce((s, p) => s + p.precoTotal, 0);
+    const freteTotal = filteredPeds.reduce((s, p) => s + p.valorFrete, 0);
+
+    // Products
+    const prodMap = new Map<string, { produto: string; linha: string; qtd: number; receita: number; cmv: number }>();
+    filteredProds.forEach(p => {
+      const sku = findSku(p.codigoProduto);
+      const key = sku ? sku.skuKalla : p.codigoProduto;
+      const existing = prodMap.get(key);
+      const rowCmv = sku ? p.quantidade * sku.custoPosto : 0;
+      if (existing) {
+        existing.qtd += p.quantidade;
+        existing.receita += p.precoTotal;
+        existing.cmv += rowCmv;
+      } else {
+        prodMap.set(key, { 
+          produto: sku ? sku.produto : p.descricao, 
+          linha: sku ? sku.linha : "Outros", 
+          qtd: p.quantidade, 
+          receita: p.precoTotal, 
+          cmv: rowCmv 
+        });
+      }
+    });
+    const resumoProdutos = Array.from(prodMap.values())
+      .map(p => ({ ...p, mcUnit: p.qtd > 0 ? (p.receita - p.cmv) / p.qtd : 0 }))
+      .sort((a, b) => b.receita - a.receita);
+
+    // Vendedores
+    const vendMap = new Map<string, { pedidosSet: Set<string>; receita: number }>();
+    filteredProds.forEach(p => {
+      const rep = p.representante || "Sem representante";
+      if (!vendMap.has(rep)) vendMap.set(rep, { pedidosSet: new Set(), receita: 0 });
+      const v = vendMap.get(rep)!;
+      v.pedidosSet.add(p.numero);
+      v.receita += p.precoTotal;
+    });
+    const resumoVendedores = Array.from(vendMap.entries())
+      .map(([nome, d]) => ({ 
+        nome, 
+        pedidos: d.pedidosSet.size, 
+        receita: d.receita, 
+        ticketMedio: d.pedidosSet.size > 0 ? d.receita / d.pedidosSet.size : 0 
+      }))
+      .sort((a, b) => b.receita - a.receita);
+
+    // Payments
+    const fpMap = new Map<string, number>();
+    filteredPeds.forEach(p => {
+      const forma = p.formaPagamento || "Outros";
+      fpMap.set(forma, (fpMap.get(forma) || 0) + p.valorTotal);
+    });
+    const fpTotal = Array.from(fpMap.values()).reduce((a, b) => a + b, 0);
+    const formasPagamento = Array.from(fpMap.entries())
+      .map(([forma, valor]) => ({ forma, valor, pct: fpTotal > 0 ? Math.round((valor / fpTotal) * 100) : 0 }))
+      .sort((a, b) => b.valor - a.valor);
+
+    // Top clients
+    const cliMap = new Map<string, number>();
+    filteredPeds.forEach(p => { cliMap.set(p.cliente, (cliMap.get(p.cliente) || 0) + p.valorTotal); });
+    const topClientes = Array.from(cliMap.entries())
+      .map(([nome, valor]) => ({ nome, valor }))
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 5);
+
+    return {
+      periodoLabel,
+      totalPedidos,
+      totalItens,
+      receitaBruta,
+      freteTotal,
+      resumoMeses: cycles.map(c => ({ mes: c.label, pedidos: 0, itens: 0, receita: 0, cmvReal: 0, cmvPct: 0 })), // Placeholder
+      resumoProdutos,
+      resumoVendedores,
+      formasPagamento,
+      topClientes,
+      filtered: selectedCycleIndex >= 0,
+      cycles
+    };
+  }, [vendas, cutoffDay, selectedCycleIndex]);
+
+  const v = dashboardData;
   const ticketMedioGeral = v.totalPedidos > 0 ? v.receitaBruta / v.totalPedidos : 0;
 
-  // Faturamento por linha (agrupado)
   const linhaMap = new Map<string, number>();
   v.resumoProdutos.forEach((p) => {
     linhaMap.set(p.linha, (linhaMap.get(p.linha) || 0) + p.receita);
@@ -51,25 +181,18 @@ export default function AnaliseVendas({ onNavigate }: AnaliseVendasProps) {
   const fatTotal = faturamentoLinha.reduce((s, f) => s + f.value, 0);
   const linhaPie = faturamentoLinha.map((f) => ({ ...f, pct: fatTotal > 0 ? Math.round((f.value / fatTotal) * 100) : 0 }));
 
-  // Crescimento mensal
-  const mesesComCrescimento = v.resumoMeses.map((m, i) => {
-    const prev = i > 0 ? v.resumoMeses[i - 1].receita : 0;
+  // Crescimento mensal (Apenas se não estiver filtrado, ou adaptado)
+  const mesesComCrescimento = vendas.resumoMeses.map((m, i) => {
+    const prev = i > 0 ? vendas.resumoMeses[i - 1].receita : 0;
     const crescimento = prev > 0 ? ((m.receita - prev) / prev) * 100 : 0;
     return { ...m, crescimento: i === 0 ? 0 : Math.round(crescimento) };
   });
 
-  // Clientes analysis
-  const clienteMap = new Map<string, { pedidos: number; receita: number; ultimaCompra: string }>();
-  v.topClientes.forEach((c) => {
-    clienteMap.set(c.nome, { pedidos: c.pedidos || 1, receita: c.valor, ultimaCompra: c.ultimaCompra || "—" });
-  });
-  const recorrentes = v.topClientes.filter((c) => (c.pedidos || 1) > 1).length;
+  const recorrentes = v.topClientes.length; // Placeholder
 
-  // Formas de pagamento
   const pixEntry = v.formasPagamento.find((f) => f.forma.toLowerCase().includes("pix"));
   const cartaoEntry = v.formasPagamento.find((f) => f.forma.toLowerCase().includes("cart") || f.forma.toLowerCase().includes("créd"));
 
-  // Insights
   const topProduto = v.resumoProdutos[0];
   const maiorTicket = v.resumoProdutos.length > 0
     ? v.resumoProdutos.reduce((best, p) => (p.qtd > 0 && (p.receita / p.qtd) > (best.receita / (best.qtd || 1)) ? p : best), v.resumoProdutos[0])
@@ -81,17 +204,75 @@ export default function AnaliseVendas({ onNavigate }: AnaliseVendasProps) {
         return mcPct < worstMcPct ? p : worst;
       }, v.resumoProdutos[0])
     : null;
-  const cmvTotal = v.resumoMeses.reduce((s, m) => s + m.cmvReal, 0);
+  
+  const cmvTotal = v.resumoProdutos.reduce((s, p) => s + p.cmv, 0);
   const cmvPctGeral = v.receitaBruta > 0 ? (cmvTotal / v.receitaBruta) * 100 : 0;
   const topVendedor = v.resumoVendedores[0];
 
   return (
     <div className="space-y-6">
+      {/* FILTROS DE PERÍODO */}
+      <div className="bg-card rounded-lg p-5 shadow-sm border border-slate-100 flex flex-col md:flex-row items-end gap-4">
+        <div className="flex-1 space-y-1.5">
+          <label className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1.5">
+            <CalendarDays className="w-3 h-3" /> Tipo de Ciclo
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button 
+              onClick={() => { setCutoffDay(1); setSelectedCycleIndex(-1); }}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${cutoffDay === 1 ? 'bg-navy text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              Mês Calendário (1 a 31)
+            </button>
+            <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+              <input 
+                type="number" min={1} max={31} value={cutoffDay}
+                onChange={(e) => {
+                  const val = Math.min(31, Math.max(1, Number(e.target.value)));
+                  setCutoffDay(val);
+                  setSelectedCycleIndex(-1);
+                }}
+                className="w-12 bg-white rounded-md text-center text-xs font-bold border-none focus:ring-1 focus:ring-navy h-8"
+              />
+              <span className="flex-1 px-2 py-1.5 text-xs text-slate-500 font-medium">Ciclo customizado</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 space-y-1.5">
+          <label className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1.5">
+            <Filter className="w-3 h-3" /> Período Selecionado
+          </label>
+          <select 
+            value={selectedCycleIndex}
+            onChange={(e) => setSelectedCycleIndex(Number(e.target.value))}
+            className="w-full h-10 px-3 rounded-lg border-none bg-slate-100 text-sm font-medium focus:ring-2 focus:ring-navy"
+          >
+            <option value={-1}>DADOS CONSOLIDADOS (TODO PERÍODO)</option>
+            {v.cycles?.map((c, i) => (
+              <option key={i} value={i}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <button 
+          onClick={() => { setCutoffDay(1); setSelectedCycleIndex(-1); }}
+          className="h-10 px-4 rounded-lg bg-slate-50 text-slate-500 hover:text-navy hover:bg-white border border-slate-200 transition-all flex items-center gap-2 text-sm font-medium shadow-sm active:scale-95"
+        >
+          <RefreshCcw className="w-4 h-4" /> Reset
+        </button>
+      </div>
+
       {/* SEÇÃO 1 — RESUMO DO PERÍODO */}
-      <div className="bg-card rounded-lg p-4 shadow-sm">
-        <p className="text-sm text-muted-foreground">
-          📅 Dados de <strong>{v.periodoMin}</strong> a <strong>{v.periodoMax}</strong>
-        </p>
+      <div className="bg-navy rounded-xl p-5 shadow-lg text-white relative overflow-hidden group">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-cyan/10 rounded-full -mr-20 -mt-20 blur-3xl group-hover:bg-cyan/20 transition-all duration-700"></div>
+        <div className="relative z-10">
+          <p className="text-[10px] uppercase font-bold tracking-widest text-cyan/70 mb-1">Análise de Performance</p>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            {v.periodoLabel}
+            {v.filtered && <span className="text-[10px] bg-cyan/20 text-cyan px-2 py-0.5 rounded-full uppercase tracking-tighter align-middle ml-2">Filtro Ativo</span>}
+          </h2>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

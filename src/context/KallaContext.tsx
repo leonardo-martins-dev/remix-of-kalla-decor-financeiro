@@ -38,6 +38,29 @@ export interface HistoricoItem {
   usuario: string;
 }
 
+export interface ProdutoVendaRow {
+  numero: string;
+  data: string;
+  cliente: string;
+  representante: string;
+  codigoProduto: string;
+  descricao: string;
+  quantidade: number;
+  precoUnit: number;
+  precoTotal: number;
+  mesAno: string;
+}
+
+export interface PedidoVendaRow {
+  numero: string;
+  cliente: string;
+  representante: string;
+  formaPagamento: string;
+  valorTotal: number;
+  valorFrete: number;
+  valorNFe: number;
+}
+
 /** Dados de vendas importados do Maiô */
 export interface VendasData {
   periodoMin: string;
@@ -51,6 +74,8 @@ export interface VendasData {
   resumoVendedores: { nome: string; pedidos: number; receita: number; ticketMedio: number }[];
   formasPagamento: { forma: string; pct: number; valor: number }[];
   topClientes: { nome: string; valor: number; pedidos?: number; ultimaCompra?: string }[];
+  produtosRaw?: ProdutoVendaRow[];
+  pedidosRaw?: PedidoVendaRow[];
 }
 
 type CustosFixos = typeof CUSTOS_FIXOS_DEFAULT;
