@@ -170,7 +170,7 @@ async function loadCustosFromDB(): Promise<CustosFixos | null> {
     .select("data")
     .order("updated_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
   if (error || !data) return null;
   return data.data as CustosFixos;
 }
@@ -191,7 +191,7 @@ async function loadVendasFromDB(): Promise<VendasData | null> {
     .select("data")
     .order("imported_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
   if (error || !data) return null;
   return data.data as VendasData;
 }
