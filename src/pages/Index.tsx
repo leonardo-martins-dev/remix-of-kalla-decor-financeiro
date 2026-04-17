@@ -33,7 +33,7 @@ const tabs = [
   { id: "usuarios", label: "Usuários", icon: Shield, component: Usuarios },
 ];
 
-function DashboardSidebar({ activeTab, onTabChange, isMobile = false }: { activeTab: string, onTabChange: (id: string) => void, isMobile?: boolean }) {
+function DashboardSidebar({ activeTab, onTabChange, isMobile = false, allowedTabs }: { activeTab: string, onTabChange: (id: string) => void, isMobile?: boolean, allowedTabs: typeof tabs }) {
   const { session, logout } = useAuth();
   
   return (
@@ -46,7 +46,7 @@ function DashboardSidebar({ activeTab, onTabChange, isMobile = false }: { active
       </div>
       
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-        {tabs.map((tab) => {
+        {allowedTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -83,11 +83,21 @@ function DashboardSidebar({ activeTab, onTabChange, isMobile = false }: { active
 }
 
 function Dashboard() {
-  const [activeTab, setActiveTab] = useState("visao");
+  const { session } = useAuth();
+  
+  const allowedTabs = tabs.filter(t => {
+    if (session?.perfil === "admin" || session?.perfil === "financeiro") return true;
+    if (session?.perfil === "consultor") return ["simulador", "orcamento"].includes(t.id);
+    return false;
+  });
+
+  const defaultTab = allowedTabs.length > 0 ? allowedTabs[0].id : "simulador";
+  
+  const [activeTab, setActiveTab] = useState(defaultTab);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const ActiveComponent = tabs.find((t) => t.id === activeTab)?.component || VisaoGeral;
+  const ActiveComponent = allowedTabs.find((t) => t.id === activeTab)?.component || (allowedTabs[0]?.component || Simulador);
   const { receitaTotal } = useKalla();
-  const activeLabel = tabs.find((t) => t.id === activeTab)?.label || "";
+  const activeLabel = allowedTabs.find((t) => t.id === activeTab)?.label || "";
 
   const handleTabChange = (id: string) => {
     setActiveTab(id);
@@ -98,7 +108,7 @@ function Dashboard() {
     <div className="h-screen flex overflow-hidden bg-slate-50/50">
       {/* Sidebar Desktop */}
       <aside className="hidden md:block z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
-        <DashboardSidebar activeTab={activeTab} onTabChange={handleTabChange} />
+        <DashboardSidebar activeTab={activeTab} onTabChange={handleTabChange} allowedTabs={allowedTabs} />
       </aside>
 
       {/* Main Content */}
@@ -116,7 +126,7 @@ function Dashboard() {
                   </button>
                 </SheetTrigger>
                 <SheetContent side="left" className="p-0 w-72 border-none">
-                  <DashboardSidebar activeTab={activeTab} onTabChange={handleTabChange} isMobile />
+                  <DashboardSidebar activeTab={activeTab} onTabChange={handleTabChange} isMobile allowedTabs={allowedTabs} />
                 </SheetContent>
               </Sheet>
 
