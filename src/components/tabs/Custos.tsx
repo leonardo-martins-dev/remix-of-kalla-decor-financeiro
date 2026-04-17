@@ -26,8 +26,6 @@ export default function Custos() {
     atualizarCustos({ ...custos, [cat]: items });
   }
 
-  const pe = totalCF / 0.546;
-
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -74,11 +72,6 @@ export default function Custos() {
           </div>
         );
       })}
-
-      <div className="bg-secondary rounded-lg p-4 text-center">
-        <p className="text-sm text-muted-foreground">Ponto de Equilíbrio estimado (MC 54,6%)</p>
-        <p className="text-2xl font-bold text-secondary-foreground">{formatBRL(pe)}</p>
-      </div>
     </div>
   );
 }

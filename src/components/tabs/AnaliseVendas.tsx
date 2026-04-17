@@ -488,17 +488,39 @@ export default function AnaliseVendas({ onNavigate }: AnaliseVendasProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-card rounded-lg p-5 shadow-sm">
           <h3 className="font-semibold text-card-foreground mb-3">💳 Formas de Pagamento</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={v.formasPagamento.map((f) => ({ name: f.forma, value: f.valor }))} cx="50%" cy="50%" outerRadius={80} dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={10}>
-                {v.formasPagamento.map((_, i) => (
-                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v: number) => formatBRL(v)} />
-            </PieChart>
-          </ResponsiveContainer>
+          <div className="flex items-center gap-6">
+            <ResponsiveContainer width="50%" height={200}>
+              <PieChart>
+                <Pie
+                  data={v.formasPagamento.map((f) => ({ name: f.forma, value: f.valor }))}
+                  dataKey="value"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  innerRadius={45}
+                  strokeWidth={2}
+                >
+                  {v.formasPagamento.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(val: number) => formatBRL(val)} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-2 min-w-0 flex-1">
+              {v.formasPagamento.map((f, i) => (
+                <div key={f.forma} className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  <div>
+                    <p className="text-sm font-medium text-card-foreground">{f.forma}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatBRL(f.valor)} ({f.pct}%)
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="bg-card rounded-lg p-5 shadow-sm flex items-center">
           <div className="space-y-3 w-full">

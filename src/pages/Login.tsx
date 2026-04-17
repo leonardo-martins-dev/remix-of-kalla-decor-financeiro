@@ -12,9 +12,13 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user.trim() || !senha.trim()) {
+      setErro("Informe usuário e senha");
+      return;
+    }
     setLoading(true);
     setErro("");
-    const result = await login(user, senha, manter);
+    const result = await login(user.trim(), senha, manter);
     if (result) setErro(result);
     setLoading(false);
   };

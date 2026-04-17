@@ -20,6 +20,48 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function normalizeLoginIdentifier(loginInput: string): string {
+  const normalized = loginInput.trim().toLowerCase();
+  if (!normalized) return "";
+  return normalized;
+}
+
+function buildLoginCandidates(loginInput: string): string[] {
+  const normalized = normalizeLoginIdentifier(loginInput);
+  if (!normalized) return [];
+  if (normalized.includes("@")) return [normalized];
+
+  // Retrocompatibilidade entre domínios de e-mail corporativo.
+  return [
+    `${normalized}@kalladecor.com`,
+    `${normalized}@kalladecor.com.br`,
+  ];
+}
+
+function mapSupabaseAuthError(error: { message?: string; status?: number; code?: string } | null): string {
+  if (!error) return "Erro inesperado ao autenticar";
+  const message = (error.message || "").toLowerCase();
+  const code = (error.code || "").toLowerCase();
+
+  if (code === "email_not_confirmed" || message.includes("email not confirmed")) {
+    return "Conta ainda não confirmada. Verifique seu e-mail.";
+  }
+
+  if (code === "invalid_credentials" || message.includes("invalid login credentials")) {
+    return "Usuário ou senha incorretos";
+  }
+
+  if (message.includes("signup is disabled")) {
+    return "Autenticação por e-mail/senha está desabilitada no Supabase.";
+  }
+
+  if (error.status === 400) {
+    return "Não foi possível autenticar. Confira usuário e senha.";
+  }
+
+  return "Falha ao autenticar no Supabase. Tente novamente.";
+}
+
 async function fetchProfile(userId: string): Promise<{ nome: string; perfil: string } | null> {
   const { data, error } = await supabase
     .from("profiles")
@@ -73,22 +115,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, senha: string, _manter: boolean): Promise<string | null> => {
-    // Suporte para login por nome de usuário (retrocompatibilidade)
-    const emailNormalized = email.includes("@") ? email : `${email.toLowerCase()}@kalladecor.com`;
+    const loginCandidates = buildLoginCandidates(email);
+    const passwordNormalized = senha.trim();
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailNormalized,
-      password: senha,
-    });
-
-    if (error) {
-      return "Usuário ou senha incorretos";
+    if (!loginCandidates.length || !passwordNormalized) {
+      return "Informe usuário e senha";
     }
 
-    if (data.user) {
-      const profile = await fetchProfile(data.user.id);
+    let lastError: { message?: string; status?: number; code?: string } | null = null;
+    let signedUser: User | null = null;
+
+    for (const candidateEmail of loginCandidates) {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: candidateEmail,
+        password: passwordNormalized,
+      });
+
+      if (!error && data.user) {
+        signedUser = data.user;
+        break;
+      }
+
+      lastError = error;
+    }
+
+    if (!signedUser) {
+      // Log técnico para diagnóstico em ambiente de produção.
+      console.error("Supabase login error:", lastError);
+      return mapSupabaseAuthError(lastError);
+    }
+
+    if (signedUser) {
+      const profile = await fetchProfile(signedUser.id);
       if (profile) {
-        setSession(buildSessionData(data.user, profile, _manter));
+        setSession(buildSessionData(signedUser, profile, _manter));
         return null;
       }
       return "Perfil do usuário não encontrado";
