@@ -88,30 +88,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+    const loadingTimeout = window.setTimeout(() => {
+      if (mounted) {
+        // Evita tela infinita caso o bootstrap da sessão trave.
+        setLoading(false);
+      }
+    }, 8000);
+
     // Recuperar sessão existente
-    supabase.auth.getSession().then(async ({ data: { session: sbSession } }) => {
-      if (sbSession?.user) {
-        const profile = await fetchProfile(sbSession.user.id);
-        if (profile) {
-          setSession(buildSessionData(sbSession.user, profile, true));
+    (async () => {
+      try {
+        const { data: { session: sbSession } } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (sbSession?.user) {
+          const profile = await fetchProfile(sbSession.user.id);
+          if (!mounted) return;
+
+          if (profile) {
+            setSession(buildSessionData(sbSession.user, profile, true));
+          } else {
+            // Sessão sem profile válido costuma indicar token/cookies inconsistentes.
+            await supabase.auth.signOut();
+            if (mounted) setSession(null);
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao restaurar sessão:", error);
+        if (mounted) setSession(null);
+      } finally {
+        if (mounted) {
+          window.clearTimeout(loadingTimeout);
+          setLoading(false);
         }
       }
-      setLoading(false);
-    });
+    })();
 
     // Escutar mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, sbSession) => {
-      if (event === "SIGNED_IN" && sbSession?.user) {
-        const profile = await fetchProfile(sbSession.user.id);
-        if (profile) {
-          setSession(buildSessionData(sbSession.user, profile, true));
+      try {
+        if (event === "SIGNED_IN" && sbSession?.user) {
+          const profile = await fetchProfile(sbSession.user.id);
+          if (profile) {
+            setSession(buildSessionData(sbSession.user, profile, true));
+          } else {
+            await supabase.auth.signOut();
+            setSession(null);
+          }
+        } else if (event === "SIGNED_OUT") {
+          setSession(null);
         }
-      } else if (event === "SIGNED_OUT") {
+      } catch (error) {
+        console.error("Erro em onAuthStateChange:", error);
         setSession(null);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      window.clearTimeout(loadingTimeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, senha: string, _manter: boolean): Promise<string | null> => {
