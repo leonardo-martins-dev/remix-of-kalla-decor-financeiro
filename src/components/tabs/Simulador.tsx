@@ -5,6 +5,17 @@ import InfoTooltip from "@/components/InfoTooltip";
 
 const safe = (v: number) => (Number.isFinite(v) ? v : 0);
 
+const DESCONTO_ALERTA_POR_PRODUTO: Record<string, number> = {
+  "Mármore Flexível": 15,
+  "Deck WPC": 12,
+  "Madeira Ecológica": 12,
+  "Piso SPC Click": 10,
+  "Pedra Leve": 10,
+  "Rev. Texturizado": 8,
+  "Ripado WPC": 8,
+  "Cobogó/3D": 5,
+};
+
 function getBadge(mcPct: number) {
   if (mcPct > 25) return { label: "SAUDÁVEL", cls: "bg-green-100 text-success border-success/30" };
   if (mcPct > 15) return { label: "ATENÇÃO", cls: "bg-yellow-100 text-warning border-warning/30" };
@@ -28,6 +39,7 @@ export default function Simulador() {
   const mcPct = safe(pvFinal > 0 ? (mc / pvFinal) * 100 : 0);
   const receitaLiquida = safe(pvFinal - (pvFinal * premissas.das) - (pvFinal * premissas.taxaCartao) - (pvFinal * comissao));
   const badge = getBadge(mcPct);
+  const limiteAlertaDesconto = DESCONTO_ALERTA_POR_PRODUTO[line.name] ?? 40;
   const descontoHex = desconto <= 25 ? "#2563EB" : desconto <= 40 ? "#D97706" : desconto <= 55 ? "#F97316" : "#EF4444";
   const descontoColor = desconto <= 25 ? "text-blue-400" : desconto <= 40 ? "text-yellow-400" : desconto <= 55 ? "text-orange-400" : "text-red-400";
 
@@ -88,9 +100,9 @@ export default function Simulador() {
                 🚨 Desconto acima de 55% — margem provavelmente negativa. Verificar viabilidade.
               </div>
             )}
-            {desconto > 40 && desconto <= 55 && (
-              <div className="mt-2 px-3 py-2 rounded-lg bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 text-xs font-medium">
-                ⚠️ Desconto acima de 40% — requer aprovação da diretoria
+            {desconto > limiteAlertaDesconto && desconto <= 55 && (
+              <div className="mt-2 px-3 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-medium">
+                ⚠️ Desconto acima de {limiteAlertaDesconto}% para {line.name} — requer aprovação da diretoria
               </div>
             )}
           </div>
