@@ -80,6 +80,7 @@ function getPvForSku(skuIdx: number, produtos: { name: string; pv: number }[]): 
 export default function Orcamento() {
   const { produtos, premissas } = useKalla();
   const { session } = useAuth();
+  const isComercial = session?.perfil === "consultor";
 
   const [cliente, setCliente] = useState<ClienteData>({
     nome: "", cpfCnpj: "", telefone: "", email: "", endereco: "", cidadeUf: "", obs: "",
@@ -177,7 +178,7 @@ export default function Orcamento() {
   const badgeReal = getBadge(margemRealPct);
 
   // PDF generation
-  const gerarPDF = () => {
+  const gerarPDF = async () => {
     const seq = seqCotacao;
     setSeqCotacao(s => s + 1);
     const numero = `KD-${String(seq).padStart(4, "0")}`;
@@ -185,16 +186,35 @@ export default function Orcamento() {
     const doc = new jsPDF();
     const w = doc.internal.pageSize.getWidth();
 
+    const getLogoDataUrl = async () => {
+      try {
+        const res = await fetch("/kalla.jpeg");
+        const blob = await res.blob();
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(String(reader.result));
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        return null;
+      }
+    };
+
     // Header
     doc.setFillColor(15, 23, 42);
     doc.rect(0, 0, w, 35, "F");
+    const logoDataUrl = await getLogoDataUrl();
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "JPEG", 14, 6, 34, 22);
+    }
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(20);
     doc.setFont("helvetica", "bold");
-    doc.text("KALLA DECOR", 14, 18);
+    doc.text("KALLA DECOR", 52, 18);
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("Revestimentos Premium | PU • WPC • SPC", 14, 26);
+    doc.text("Revestimentos Premium | PU • WPC • SPC", 52, 26);
 
     doc.setFontSize(10);
     doc.text(`Cotação ${numero}`, w - 14, 14, { align: "right" });
@@ -393,7 +413,7 @@ export default function Orcamento() {
                 <th className="pb-2 pr-2 w-24 text-right">Preço Unit.</th>
                 <th className="pb-2 pr-2 w-20 text-center">Desc %</th>
                 <th className="pb-2 pr-2 w-24 text-right">Subtotal</th>
-                <th className="pb-2 pr-2 w-20 text-center">MC%</th>
+                {!isComercial && <th className="pb-2 pr-2 w-20 text-center">MC%</th>}
                 <th className="pb-2 w-8"></th>
               </tr>
             </thead>
@@ -428,7 +448,7 @@ export default function Orcamento() {
                         className="w-full px-2 py-1.5 rounded border border-border text-sm text-center focus:outline-none focus:ring-2 focus:ring-ring" />
                     </td>
                     <td className="py-2 pr-2 text-right font-semibold">{formatBRL2(calcSubtotal(item))}</td>
-                    <td className={`py-2 pr-2 text-center font-bold ${mcColor}`}>{mcPct.toFixed(1)}%</td>
+                    {!isComercial && <td className={`py-2 pr-2 text-center font-bold ${mcColor}`}>{mcPct.toFixed(1)}%</td>}
                     <td className="py-2">
                       <button onClick={() => removeItem(item.id)} disabled={itens.length <= 1}
                         className="text-muted-foreground hover:text-destructive disabled:opacity-30 transition-colors"
@@ -451,16 +471,20 @@ export default function Orcamento() {
             <input type="number" min={0} value={freteCobrado} onChange={e => setFreteCobrado(Number(e.target.value))}
               className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Custo do frete para Kalla (R$)</label>
-            <input type="number" min={0} value={custoFreteKalla} onChange={e => setCustoFreteKalla(Number(e.target.value))}
-              className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Embalagem (R$)</label>
-            <input type="number" min={0} value={embalagem} onChange={e => setEmbalagem(Number(e.target.value))}
-              className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
+          {!isComercial && (
+            <div>
+              <label className="text-xs text-muted-foreground">Custo do frete para Kalla (R$)</label>
+              <input type="number" min={0} value={custoFreteKalla} onChange={e => setCustoFreteKalla(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+          )}
+          {!isComercial && (
+            <div>
+              <label className="text-xs text-muted-foreground">Embalagem (R$)</label>
+              <input type="number" min={0} value={embalagem} onChange={e => setEmbalagem(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+          )}
           <div>
             <label className="text-xs text-muted-foreground">Forma de pagamento</label>
             <select value={formaPgto} onChange={e => setFormaPgto(e.target.value)}
@@ -497,18 +521,22 @@ export default function Orcamento() {
           <p className="text-xs text-muted-foreground mb-1">Desconto Médio <InfoTooltip text="Média ponderada dos descontos aplicados nos itens, pelo peso da quantidade." /></p>
           <p className="text-lg font-bold text-foreground">{descontoMedio.toFixed(1)}%</p>
         </div>
-        <div className="bg-card rounded-lg p-4 shadow-sm text-center">
-          <p className="text-xs text-muted-foreground mb-1">MC Venda <InfoTooltip text="Margem de contribuição da venda considerando DAS, taxa de cartão, comissão e custo dos produtos. Não inclui frete e embalagem." /></p>
-          <p className="text-xs text-muted-foreground">(sem frete/embal)</p>
-          <p className={`text-lg font-bold ${mcVenda >= 0 ? "text-info" : "text-destructive"}`}>{formatBRL2(mcVenda)}</p>
-          <p className="text-xs text-muted-foreground">{mcVendaPct.toFixed(1)}%</p>
-        </div>
-        <div className={`rounded-lg p-4 shadow-sm text-center border ${badgeReal.cls}`}>
-          <p className="text-xs text-muted-foreground mb-1">Margem Real <InfoTooltip text="Margem final descontando custo de frete e embalagem da Kalla. É o lucro real dessa venda específica." /></p>
-          <p className="text-xs text-muted-foreground">(com frete/embal)</p>
-          <p className="text-lg font-bold">{formatBRL2(margemReal)}</p>
-          <p className="text-sm font-semibold">{margemRealPct.toFixed(1)}% — {badgeReal.label}</p>
-        </div>
+        {!isComercial && (
+          <div className="bg-card rounded-lg p-4 shadow-sm text-center">
+            <p className="text-xs text-muted-foreground mb-1">MC Venda <InfoTooltip text="Margem de contribuição da venda considerando DAS, taxa de cartão, comissão e custo dos produtos. Não inclui frete e embalagem." /></p>
+            <p className="text-xs text-muted-foreground">(sem frete/embal)</p>
+            <p className={`text-lg font-bold ${mcVenda >= 0 ? "text-info" : "text-destructive"}`}>{formatBRL2(mcVenda)}</p>
+            <p className="text-xs text-muted-foreground">{mcVendaPct.toFixed(1)}%</p>
+          </div>
+        )}
+        {!isComercial && (
+          <div className={`rounded-lg p-4 shadow-sm text-center border ${badgeReal.cls}`}>
+            <p className="text-xs text-muted-foreground mb-1">Margem Real <InfoTooltip text="Margem final descontando custo de frete e embalagem da Kalla. É o lucro real dessa venda específica." /></p>
+            <p className="text-xs text-muted-foreground">(com frete/embal)</p>
+            <p className="text-lg font-bold">{formatBRL2(margemReal)}</p>
+            <p className="text-sm font-semibold">{margemRealPct.toFixed(1)}% — {badgeReal.label}</p>
+          </div>
+        )}
       </div>
 
       {/* Generate PDF Button */}

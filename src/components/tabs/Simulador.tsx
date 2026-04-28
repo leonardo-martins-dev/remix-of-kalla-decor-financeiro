@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useKalla } from "@/context/KallaContext";
+import { useAuth } from "@/context/AuthContext";
 import { avgCusto, formatBRL, formatBRL2 } from "@/data/kallaData";
 import InfoTooltip from "@/components/InfoTooltip";
 
@@ -25,9 +26,11 @@ function getBadge(mcPct: number) {
 
 export default function Simulador() {
   const { produtos, premissas } = useKalla();
+  const { session } = useAuth();
   const [lineIdx, setLineIdx] = useState(0);
   const [desconto, setDesconto] = useState(0);
   const [isB2B, setIsB2B] = useState(false);
+  const isComercial = session?.perfil === "consultor";
 
   const line = produtos[lineIdx];
   const custoMedio = avgCusto(line.custos);
@@ -130,10 +133,12 @@ export default function Simulador() {
               <p className="text-xs text-muted-foreground">Receita Líquida <InfoTooltip text="Preço final menos DAS, taxa de cartão e comissão. É o valor que efetivamente fica antes de descontar o custo do produto." /></p>
               <p className="text-lg font-bold text-secondary-foreground">{formatBRL2(receitaLiquida)}</p>
             </div>
-            <div className="bg-secondary rounded-lg p-3 text-center">
-              <p className="text-xs text-muted-foreground">Custo Posto <InfoTooltip text="Custo médio do produto posto em estoque: FOB + internação + tarifas + desembaraço, dividido pela quantidade do container." /></p>
-              <p className="text-lg font-bold text-secondary-foreground">{formatBRL2(custoMedio)}</p>
-            </div>
+            {!isComercial && (
+              <div className="bg-secondary rounded-lg p-3 text-center">
+                <p className="text-xs text-muted-foreground">Custo Posto <InfoTooltip text="Custo médio do produto posto em estoque: FOB + internação + tarifas + desembaraço, dividido pela quantidade do container." /></p>
+                <p className="text-lg font-bold text-secondary-foreground">{formatBRL2(custoMedio)}</p>
+              </div>
+            )}
             <div className={`rounded-lg p-3 text-center ${mc >= 0 ? "bg-green-50" : "bg-red-50"}`}>
               <p className="text-xs text-muted-foreground">MC (R$) <InfoTooltip text="Margem de Contribuição em reais: Receita Líquida menos Custo Posto. Quanto sobra de cada venda para cobrir custos fixos." /></p>
               <p className={`text-lg font-bold ${mc >= 0 ? "text-success" : "text-destructive"}`}>{formatBRL2(mc)}</p>
