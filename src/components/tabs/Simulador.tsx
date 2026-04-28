@@ -30,7 +30,7 @@ export default function Simulador() {
   const [lineIdx, setLineIdx] = useState(0);
   const [desconto, setDesconto] = useState(0);
   const [isB2B, setIsB2B] = useState(false);
-  const isComercial = session?.perfil === "consultor";
+  const isComercial = ["consultor", "vendas"].includes(session?.perfil ?? "");
 
   const line = produtos[lineIdx];
   const custoMedio = avgCusto(line.custos);

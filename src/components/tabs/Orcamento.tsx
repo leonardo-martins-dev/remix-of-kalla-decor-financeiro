@@ -80,7 +80,7 @@ function getPvForSku(skuIdx: number, produtos: { name: string; pv: number }[]): 
 export default function Orcamento() {
   const { produtos, premissas } = useKalla();
   const { session } = useAuth();
-  const isComercial = session?.perfil === "consultor";
+  const isComercial = ["consultor", "vendas"].includes(session?.perfil ?? "");
 
   const [cliente, setCliente] = useState<ClienteData>({
     nome: "", cpfCnpj: "", telefone: "", email: "", endereco: "", cidadeUf: "", obs: "",
