@@ -97,6 +97,12 @@ interface KallaContextType extends KallaState {
   atualizarContainer: (id: string, updates: Partial<ContainerItem>, usuario?: string) => void;
   removerContainer: (id: string, usuario?: string) => void;
   atualizarProduto: (idx: number, updates: Partial<ProductLine>, motivo: string, usuario?: string) => void;
+  adicionarProduto: (produto: ProductLine, usuario?: string) => Promise<{ ok: boolean; error?: string }>;
+  adicionarSku: (
+    lineIdx: number,
+    sku: { nome: string; custoPosto: number },
+    usuario?: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   atualizarCustos: (novos: CustosFixos, usuario?: string) => void;
   adicionarPessoa: (cat: "pessoal", item: { nome: string; valor: number }, usuario?: string) => void;
   removerPessoa: (idx: number, usuario?: string) => void;
@@ -171,6 +177,7 @@ async function loadProdutosFromDB(): Promise<ProductLine[] | null> {
     .order("id", { ascending: true });
   if (error || !data) return null;
   return data.map((r) => ({
+    id: Number(r.id),
     name: r.name,
     material: r.material,
     custos: r.custos as number[],
@@ -336,9 +343,9 @@ export function KallaProvider({ children }: { children: ReactNode }) {
   const atualizarProduto = (idx: number, updates: Partial<ProductLine>, motivo: string, usuario?: string) => {
     setProdutos((prev) => {
       const next = prev.map((p, i) => (i === idx ? { ...p, ...updates } : p));
-      // Supabase sync — usando o ID do banco (idx + 1 porque serial começa em 1)
       const produto = next[idx];
       if (produto) {
+        const dbId = produto.id ?? idx + 1;
         supabase.from("produtos").update({
           name: produto.name, material: produto.material, custos: produto.custos,
           pv: produto.pv, pm: produto.pm, pv_b2b: produto.pvB2B,
@@ -346,11 +353,91 @@ export function KallaProvider({ children }: { children: ReactNode }) {
           skus: produto.skus, mercado_b2c: produto.mercadoB2C, mercado_b2b: produto.mercadoB2B,
           posicao: produto.posicao, concorrentes: produto.concorrentes, specs: produto.specs || null,
           updated_at: new Date().toISOString(),
-        }).eq("id", idx + 1).then();
+        }).eq("id", dbId).then();
       }
       return next;
     });
     addLog("Produto", `${produtos[idx]?.name} — ${motivo}`, usuario);
+  };
+
+  const adicionarProduto = async (produto: ProductLine, usuario?: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!produto.name.trim()) return { ok: false, error: "Informe o nome da linha." };
+    if (produtos.some((p) => p.name.toLowerCase() === produto.name.trim().toLowerCase())) {
+      return { ok: false, error: "Já existe uma linha com este nome." };
+    }
+
+    const payload = {
+      name: produto.name.trim(),
+      material: produto.material || "—",
+      custos: produto.custos?.length ? produto.custos : [0],
+      pv: produto.pv || 0,
+      pm: produto.pm || 0,
+      pv_b2b: produto.pvB2B || 0,
+      ped_min: produto.pedMin || 1,
+      frete: produto.frete ?? 150,
+      embal_un: produto.embalUn ?? 1,
+      skus: produto.skus?.length ? produto.skus : [produto.name.trim()],
+      mercado_b2c: produto.mercadoB2C || "",
+      mercado_b2b: produto.mercadoB2B || "",
+      posicao: produto.posicao || "Novo",
+      concorrentes: produto.concorrentes || [],
+      specs: produto.specs || null,
+    };
+
+    const { data, error } = await supabase.from("produtos").insert(payload).select("id").single();
+    if (error) return { ok: false, error: error.message };
+
+    const novo: ProductLine = {
+      ...produto,
+      id: data?.id ? Number(data.id) : undefined,
+      name: payload.name,
+      material: payload.material,
+      custos: payload.custos,
+      skus: payload.skus as string[],
+      frete: payload.frete,
+      embalUn: payload.embal_un,
+      pedMin: payload.ped_min,
+      mercadoB2C: payload.mercado_b2c,
+      mercadoB2B: payload.mercado_b2b,
+      posicao: payload.posicao,
+      concorrentes: payload.concorrentes,
+    };
+
+    setProdutos((prev) => [...prev, novo]);
+    addLog("Produto", `Linha "${novo.name}" cadastrada`, usuario);
+    return { ok: true };
+  };
+
+  const adicionarSku = async (
+    lineIdx: number,
+    sku: { nome: string; custoPosto: number },
+    usuario?: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const linha = produtos[lineIdx];
+    if (!linha) return { ok: false, error: "Linha não encontrada." };
+    const nome = sku.nome.trim();
+    if (!nome) return { ok: false, error: "Informe o nome do SKU." };
+    if (linha.skus.some((s) => s.toLowerCase() === nome.toLowerCase())) {
+      return { ok: false, error: "Este SKU já existe nesta linha." };
+    }
+
+    const novosSkus = [...linha.skus, nome];
+    const novosCustos = [...linha.custos, Number(sku.custoPosto) || 0];
+    const dbId = linha.id ?? lineIdx + 1;
+
+    const { error } = await supabase.from("produtos").update({
+      skus: novosSkus,
+      custos: novosCustos,
+      updated_at: new Date().toISOString(),
+    }).eq("id", dbId);
+
+    if (error) return { ok: false, error: error.message };
+
+    setProdutos((prev) =>
+      prev.map((p, i) => (i === lineIdx ? { ...p, skus: novosSkus, custos: novosCustos } : p))
+    );
+    addLog("Produto", `SKU "${nome}" adicionado em ${linha.name}`, usuario);
+    return { ok: true };
   };
 
   const atualizarCustos = (novos: CustosFixos, usuario?: string) => {
@@ -416,7 +503,7 @@ export function KallaProvider({ children }: { children: ReactNode }) {
       value={{
         meses, containers, produtos, custos, historico, premissas, vendas, dbReady,
         salvarFechamento, adicionarContainer, atualizarContainer, removerContainer,
-        atualizarProduto, atualizarCustos, adicionarPessoa, removerPessoa,
+        atualizarProduto, adicionarProduto, adicionarSku, atualizarCustos, adicionarPessoa, removerPessoa,
         salvarVendas, resetar,
         totalCF, totalCFPorCategoria, faturamentoEvolucao, receitaTotal, ultimoMesFaturamento,
       }}

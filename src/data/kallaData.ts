@@ -1,4 +1,5 @@
 export interface ProductLine {
+  id?: number;
   name: string;
   material: string;
   custos: number[];
@@ -14,6 +15,39 @@ export interface ProductLine {
   posicao: string;
   concorrentes: { nome: string; preco: number }[];
   specs?: string[];
+}
+
+/** Item vendável para cotação (SKU dentro de uma linha). */
+export interface CatalogSku {
+  key: string;
+  produto: string;
+  skuKalla: string;
+  linha: string;
+  custoPosto: number;
+  pv: number;
+}
+
+/** Monta o catálogo do orçamento a partir das linhas de produto (dinâmico). */
+export function buildOrcamentoCatalog(produtos: ProductLine[]): CatalogSku[] {
+  const items: CatalogSku[] = [];
+  for (const line of produtos) {
+    const skus = line.skus?.length ? line.skus : [line.name];
+    skus.forEach((skuName, i) => {
+      const nome = String(skuName || "").trim() || line.name;
+      const custo = Number.isFinite(line.custos?.[i])
+        ? Number(line.custos[i])
+        : avgCusto(line.custos?.length ? line.custos : [0]);
+      items.push({
+        key: `${line.name}::${nome}::${i}`,
+        produto: nome.includes(line.name) ? nome : `${line.name} ${nome}`,
+        skuKalla: nome,
+        linha: line.name,
+        custoPosto: custo,
+        pv: Number(line.pv) || 0,
+      });
+    });
+  }
+  return items;
 }
 
 export const PREMISSAS_DEFAULT = {

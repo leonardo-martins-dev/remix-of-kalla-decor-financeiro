@@ -323,6 +323,174 @@ function AtualizarProduto() {
   );
 }
 
+/* ── Seção 3b: Novo Produto / SKU ────────────── */
+function NovoProduto() {
+  const { session } = useAuth();
+  const userName = session?.nome || "Sistema";
+  const { produtos, adicionarProduto, adicionarSku } = useKalla();
+  const { toast } = useToast();
+
+  const [modo, setModo] = useState<"linha" | "sku">("linha");
+
+  // Nova linha
+  const [nomeLinha, setNomeLinha] = useState("");
+  const [material, setMaterial] = useState("PU");
+  const [pv, setPv] = useState(0);
+  const [pm, setPm] = useState(0);
+  const [pvB2B, setPvB2B] = useState(0);
+  const [custoPosto, setCustoPosto] = useState(0);
+  const [skuInicial, setSkuInicial] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Novo SKU em linha existente
+  const [lineIdx, setLineIdx] = useState(0);
+  const [skuNome, setSkuNome] = useState("");
+  const [skuCusto, setSkuCusto] = useState(0);
+
+  const handleAddLinha = async () => {
+    if (!nomeLinha.trim()) {
+      toast({ title: "Informe o nome da linha de produto", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    const sku = skuInicial.trim() || nomeLinha.trim();
+    const result = await adicionarProduto({
+      name: nomeLinha.trim(),
+      material: material.trim() || "—",
+      custos: [custoPosto],
+      pv,
+      pm: pm || pv,
+      pvB2B: pvB2B || pv,
+      pedMin: 1,
+      frete: 150,
+      embalUn: 1,
+      skus: [sku],
+      mercadoB2C: "",
+      mercadoB2B: "",
+      posicao: "Novo",
+      concorrentes: [],
+    }, userName);
+    setSaving(false);
+    if (!result.ok) {
+      toast({ title: result.error || "Erro ao cadastrar", variant: "destructive" });
+      return;
+    }
+    toast({ title: `Linha "${nomeLinha.trim()}" cadastrada — já disponível no orçamento ✅` });
+    setNomeLinha(""); setSkuInicial(""); setPv(0); setPm(0); setPvB2B(0); setCustoPosto(0);
+  };
+
+  const handleAddSku = async () => {
+    if (!skuNome.trim()) {
+      toast({ title: "Informe o nome do SKU", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    const result = await adicionarSku(lineIdx, { nome: skuNome.trim(), custoPosto: skuCusto }, userName);
+    setSaving(false);
+    if (!result.ok) {
+      toast({ title: result.error || "Erro ao adicionar SKU", variant: "destructive" });
+      return;
+    }
+    toast({ title: `SKU "${skuNome.trim()}" adicionado em ${produtos[lineIdx]?.name} ✅` });
+    setSkuNome(""); setSkuCusto(0);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex rounded-lg overflow-hidden border border-border w-fit">
+        <button type="button" onClick={() => setModo("linha")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${modo === "linha" ? "bg-info text-primary-foreground" : "bg-card text-muted-foreground hover:bg-secondary"}`}>
+          Nova linha de produto
+        </button>
+        <button type="button" onClick={() => setModo("sku")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${modo === "sku" ? "bg-info text-primary-foreground" : "bg-card text-muted-foreground hover:bg-secondary"}`}>
+          SKU em linha existente
+        </button>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Produtos cadastrados aqui aparecem automaticamente no <strong>Orçamento</strong> e no <strong>Simulador</strong>.
+      </p>
+
+      {modo === "linha" ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground">Nome da linha *</label>
+              <input type="text" value={nomeLinha} onChange={(e) => setNomeLinha(e.target.value)}
+                placeholder="Ex: Painel Acústico"
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Material</label>
+              <input type="text" value={material} onChange={(e) => setMaterial(e.target.value)}
+                placeholder="PU / WPC / SPC"
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">SKU inicial (opcional)</label>
+              <input type="text" value={skuInicial} onChange={(e) => setSkuInicial(e.target.value)}
+                placeholder="Ex: Branco Natural"
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Custo posto (R$)</label>
+              <input type="number" min={0} step={0.01} value={custoPosto} onChange={(e) => setCustoPosto(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">PV B2C (R$)</label>
+              <input type="number" min={0} step={0.01} value={pv} onChange={(e) => setPv(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded border border-border bg-blue-50 text-info font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">PV mínimo (R$)</label>
+              <input type="number" min={0} step={0.01} value={pm} onChange={(e) => setPm(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">PV B2B (R$)</label>
+              <input type="number" min={0} step={0.01} value={pvB2B} onChange={(e) => setPvB2B(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+          </div>
+          <button type="button" onClick={handleAddLinha} disabled={saving}
+            className="px-6 py-2.5 bg-info text-primary-foreground rounded-lg font-medium hover:bg-info/90 transition-colors disabled:opacity-60">
+            {saving ? "Salvando..." : "➕ Cadastrar linha"}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground">Linha</label>
+              <select value={lineIdx} onChange={(e) => setLineIdx(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                {produtos.map((p, i) => <option key={p.id ?? i} value={i}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Nome do SKU *</label>
+              <input type="text" value={skuNome} onChange={(e) => setSkuNome(e.target.value)}
+                placeholder="Ex: Cinza Fog"
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Custo posto (R$)</label>
+              <input type="number" min={0} step={0.01} value={skuCusto} onChange={(e) => setSkuCusto(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+          </div>
+          <button type="button" onClick={handleAddSku} disabled={saving || produtos.length === 0}
+            className="px-6 py-2.5 bg-info text-primary-foreground rounded-lg font-medium hover:bg-info/90 transition-colors disabled:opacity-60">
+            {saving ? "Salvando..." : "➕ Adicionar SKU"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Seção 4: Equipe / Custos Fixos ──────────── */
 function EquipeCustos() {
   const { session } = useAuth();
@@ -449,6 +617,15 @@ export default function Atualizar() {
           </AccordionTrigger>
           <AccordionContent className="px-5 pb-5">
             <AtualizarProduto />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="novo-produto" className="bg-card rounded-lg shadow-sm border">
+          <AccordionTrigger className="px-5 py-4 hover:no-underline">
+            <span className="font-semibold text-card-foreground">🆕 Cadastrar Produto / SKU</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-5 pb-5">
+            <NovoProduto />
           </AccordionContent>
         </AccordionItem>
 

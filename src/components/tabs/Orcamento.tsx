@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useKalla } from "@/context/KallaContext";
 import { useAuth } from "@/context/AuthContext";
-import { SKU_MAP } from "@/data/skuMapping";
-import { formatBRL2, PREMISSAS_DEFAULT } from "@/data/kallaData";
+import { buildOrcamentoCatalog, formatBRL2 } from "@/data/kallaData";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import InfoTooltip from "@/components/InfoTooltip";
+import { supabase } from "@/lib/supabase";
 
 const safe = (v: number) => (Number.isFinite(v) ? v : 0);
 
@@ -55,8 +55,6 @@ interface CotacaoSalva {
   vendedor: string;
 }
 
-import { supabase } from "@/lib/supabase";
-
 const FORMAS_PGTO = [
   "À Vista (PIX)",
   "Cartão 1x",
@@ -66,28 +64,18 @@ const FORMAS_PGTO = [
   "Boleto 30/60",
 ];
 
-// All SKUs flattened for the select
-const ALL_SKUS = SKU_MAP.map((s, i) => ({ idx: i, label: `${s.produto} (${s.skuKalla})`, pv: 0, custo: s.custoPosto, linha: s.linha }));
-
-// Get PV for a SKU based on its product line
-function getPvForSku(skuIdx: number, produtos: { name: string; pv: number }[]): number {
-  const sku = SKU_MAP[skuIdx];
-  if (!sku) return 0;
-  const prod = produtos.find(p => p.name === sku.linha);
-  return prod ? prod.pv : 0;
-}
-
 export default function Orcamento() {
   const { produtos, premissas } = useKalla();
   const { session } = useAuth();
   const isComercial = ["consultor", "vendas"].includes(session?.perfil ?? "");
+  const catalog = useMemo(() => buildOrcamentoCatalog(produtos), [produtos]);
 
   const [cliente, setCliente] = useState<ClienteData>({
     nome: "", cpfCnpj: "", telefone: "", email: "", endereco: "", cidadeUf: "", obs: "",
   });
 
   const [itens, setItens] = useState<CotacaoItem[]>([
-    { id: 1, skuIdx: 0, qtd: 1, pvUnit: getPvForSku(0, produtos), descPct: 0 },
+    { id: 1, skuIdx: 0, qtd: 1, pvUnit: 0, descPct: 0 },
   ]);
 
   const [freteCobrado, setFreteCobrado] = useState(0);
@@ -118,8 +106,18 @@ export default function Orcamento() {
     loadDb();
   }, []);
 
+  // Quando o catálogo carrega/muda, sincroniza preço inicial do 1º item se ainda estiver zerado
+  useEffect(() => {
+    if (!catalog.length) return;
+    setItens((prev) => {
+      if (prev.length !== 1 || prev[0].pvUnit > 0) return prev;
+      return [{ ...prev[0], skuIdx: 0, pvUnit: catalog[0].pv }];
+    });
+  }, [catalog]);
+
   const addItem = () => {
-    setItens(prev => [...prev, { id: nextId, skuIdx: 0, qtd: 1, pvUnit: getPvForSku(0, produtos), descPct: 0 }]);
+    const pv = catalog[0]?.pv ?? 0;
+    setItens(prev => [...prev, { id: nextId, skuIdx: 0, qtd: 1, pvUnit: pv, descPct: 0 }]);
     setNextId(n => n + 1);
   };
 
@@ -133,7 +131,7 @@ export default function Orcamento() {
       if (i.id !== id) return i;
       const updated = { ...i, [field]: value };
       if (field === "skuIdx") {
-        updated.pvUnit = getPvForSku(value, produtos);
+        updated.pvUnit = catalog[value]?.pv ?? 0;
       }
       return updated;
     }));
@@ -144,10 +142,10 @@ export default function Orcamento() {
 
   const calcMcItem = useCallback((item: CotacaoItem) => {
     const pvDesc = item.pvUnit * (1 - item.descPct / 100);
-    const custo = SKU_MAP[item.skuIdx]?.custoPosto ?? 0;
+    const custo = catalog[item.skuIdx]?.custoPosto ?? 0;
     const mc = pvDesc - (pvDesc * premissas.das) - (pvDesc * premissas.taxaCartao) - (pvDesc * premissas.comissaoB2C) - custo;
     return safe(mc);
-  }, [premissas]);
+  }, [premissas, catalog]);
 
   const calcMcPctItem = useCallback((item: CotacaoItem) => {
     const pvDesc = item.pvUnit * (1 - item.descPct / 100);
@@ -168,7 +166,7 @@ export default function Orcamento() {
   const dasTotal = safe(receitaLiquida * premissas.das);
   const taxaTotal = safe(receitaLiquida * premissas.taxaCartao);
   const comissaoTotal = safe(receitaLiquida * premissas.comissaoB2C);
-  const cmvTotal = itens.reduce((s, i) => safe(i.qtd * (SKU_MAP[i.skuIdx]?.custoPosto ?? 0)) + s, 0);
+  const cmvTotal = itens.reduce((s, i) => safe(i.qtd * (catalog[i.skuIdx]?.custoPosto ?? 0)) + s, 0);
   const mcVenda = safe(receitaLiquida - dasTotal - taxaTotal - comissaoTotal - cmvTotal);
   const mcVendaPct = receitaLiquida > 0 ? safe((mcVenda / receitaLiquida) * 100) : 0;
 
@@ -250,7 +248,7 @@ export default function Orcamento() {
 
     const tableData = itens.map((item, idx) => [
       String(idx + 1),
-      SKU_MAP[item.skuIdx]?.produto ?? "",
+      catalog[item.skuIdx]?.produto ?? "",
       String(item.qtd),
       formatBRL2(item.pvUnit),
       item.descPct > 0 ? `${item.descPct}%` : "—",
@@ -398,11 +396,16 @@ export default function Orcamento() {
       <div className="bg-card rounded-lg p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-card-foreground">📦 Itens da Cotação</h3>
-          <button onClick={addItem}
-            className="px-3 py-1.5 text-sm font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          <button onClick={addItem} disabled={!catalog.length}
+            className="px-3 py-1.5 text-sm font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
             + Adicionar item
           </button>
         </div>
+        {!catalog.length && (
+          <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+            Nenhum produto cadastrado. Peça ao financeiro/admin para adicionar em <strong>Atualizar → Cadastrar Produto / SKU</strong>.
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm" role="table">
             <thead>
@@ -427,8 +430,8 @@ export default function Orcamento() {
                     <td className="py-2 pr-2">
                       <select value={item.skuIdx} onChange={e => updateItem(item.id, "skuIdx", Number(e.target.value))}
                         className="w-full px-2 py-1.5 rounded border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                        {ALL_SKUS.map((s, i) => (
-                          <option key={i} value={s.idx}>{s.label}</option>
+                        {catalog.map((s, i) => (
+                          <option key={s.key} value={i}>{s.produto} ({s.linha})</option>
                         ))}
                       </select>
                     </td>
