@@ -177,6 +177,15 @@ export const productLines: ProductLine[] = [
     concorrentes: [],
   },
   {
+    name: "Cola para Instalação",
+    material: "Outros",
+    custos: [0],
+    pv: 30, pm: 30, pvB2B: 30, pedMin: 1, frete: 150, embalUn: 5,
+    skus: ["Cola para Instalação 800ml"],
+    mercadoB2C: "", mercadoB2B: "", posicao: "Acessório",
+    concorrentes: [],
+  },
+  {
     name: "Clipe",
     material: "Outros",
     custos: [10.00],
